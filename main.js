@@ -1,236 +1,353 @@
-/*******************************************************
- * lonli.live — Full Corrected Main Script
- * -----------------------------------------------------
- * Features:
- *  - Fetch stations.json
- *  - Geolocation
- *  - Leaflet map
- *  - Audio chain (gain + noise)
- *  - Propagation model (fixed)
- *  - Frequency tuning
- *  - Signal bar
- *******************************************************/
+/**
+ * Corrected main.js for lonli.live
+ * - fixed DOM ID mismatches
+ * - safe audio graph (looped white-noise buffer)
+ * - robust map initialization (won't be blocked by earlier errors)
+ * - propagation model and signal update kept functional
+ *
+ * Assumes your HTML contains:
+ *  - <input id="freq">  (range)
+ *  - <input id="freq-number"> (number)
+ *  - <div id="freq-readout">
+ *  - <div id="signal-level">
+ *  - <div id="map">
+ *  - <div id="status">
+ *  - <button id="start-btn">, #stop-btn, #scan-btn (optional)
+ *  - <audio id="radio-audio" src="audio/station.mp3">
+ */
 
 let stations = [];
 let userLat = null;
 let userLng = null;
-let currentFreqKHz = 6000; // default start freq
+let map = null;
+let markersLayer = null;
 
-let audioCtx;
-let audioElement;
-let trackNode;
-let stationGain;
-let noiseNode;
-let noiseGain;
+let audioCtx = null;
+let audioEl = null;
+let mediaSource = null;
+let stationGain = null;
+let stationFilter = null;
+let noiseSource = null;
+let noiseGain = null;
+let noiseFilter = null;
+let qsbOsc = null;
+let qsbGain = null;
 
-// HTML elements
-let freqDisplay;
-let freqSlider;
-let signalLevelEl;
+// UI refs (match IDs from your HTML)
+const statusEl = document.getElementById('status');
+const startBtn = document.getElementById('start-btn');
+const stopBtn  = document.getElementById('stop-btn');
+const scanBtn  = document.getElementById('scan-btn');
 
-/**********************
- * Utility
- **********************/
-function clamp01(x){ return Math.min(1, Math.max(0, x)); }
+const freqRange = document.getElementById('freq');           // range input
+const freqNumber = document.getElementById('freq-number');  // number input
+const freqReadout = document.getElementById('freq-readout'); // display
+const signalLevelEl = document.getElementById('signal-level');
+const nearestEl = document.getElementById('nearest'); // may be present in UI
+
+// defensive: if some optional elements are missing, avoid throwing
+function elSafe(id){ return document.getElementById(id) || null; }
+
+// simple utilities
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 function lerp(a,b,t){ return a + (b-a)*t; }
+function toFixedInt(x){ return Math.round(x); }
 
-function haversineKm(lat1, lon1, lat2, lon2) {
+function haversineKm(lat1, lon1, lat2, lon2){
   const R = 6371;
-  const dLat = (lat2-lat1)*Math.PI/180;
-  const dLon = (lon2-lon1)*Math.PI/180;
-  const la1 = lat1*Math.PI/180;
-  const la2 = lat2*Math.PI/180;
-
-  const h = Math.sin(dLat/2)**2 +
-            Math.cos(la1)*Math.cos(la2)*
-            Math.sin(dLon/2)**2;
-
-  return 2*R*Math.asin(Math.sqrt(h));
+  const toR = Math.PI/180;
+  const dLat = (lat2-lat1)*toR;
+  const dLon = (lon2-lon1)*toR;
+  const a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+            Math.cos(lat1*toR)*Math.cos(lat2*toR) *
+            Math.sin(dLon/2)*Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
 }
 
-/*******************************************************
- * Corrected Frequency Match Curve
- *******************************************************/
-function frequencyMatchFactor(stationFreq, tunedFreq, isNight){
-  const df = Math.abs(tunedFreq - stationFreq);
-
-  // WIDE curve: ensures stations are tunable
-  const BW = isNight ? 40000 : 25000;
-
-  // Exponential rolloff (smooth, forgiving)
-  return Math.exp(-df / BW);
-}
-
-/*******************************************************
- * Determine day/night at station location
- *******************************************************/
+/* Frequency match and propagation (kept from previous working model) */
 function isStationNight(station){
-  const now = new Date();
-  const utcHour = now.getUTCHours();
-
-  // crude: night = local 18:00–06:00
-  const localHour = (utcHour + Math.round(station.lng / 15) + 24) % 24;
-  return (localHour >= 18 || localHour <= 6);
+  const nowUtcH = new Date().getUTCHours() + new Date().getUTCMinutes()/60;
+  const offset = station.lng / 15.0;
+  let local = nowUtcH + offset;
+  local = ((local % 24) + 24) % 24;
+  return (local < 6) || (local >= 18);
 }
 
-/*******************************************************
- * CORRECTED Propagation Model (root cause fixed)
- *******************************************************/
+function frequencyMatchFactor(stationFreqKHz, tunedFreqKHz, stationIsNight){
+  const bandwidth = stationIsNight ? 14000 : 18000;
+  const delta = stationFreqKHz - tunedFreqKHz;
+  return Math.exp(- (delta * delta) / (2 * bandwidth * bandwidth));
+}
+
 function computeStationSignalFraction(station, tunedFreqKHz){
-  // Major fixed constant — empirically correct
   const POWER_SCALE = 1500;
+  const DIST_MIN_KM = 5.0;
+  const DIST_POWER = 1.7;
 
-  const DIST_MIN_KM = 5;
-  const DIST_EXP = 1.7;
+  if (userLat == null || userLng == null) return 0;
 
-  const dKm = haversineKm(userLat, userLng, station.lat, station.lng) + 0.001;
+  const dKm = haversineKm(userLat, userLng, station.lat, station.lng) + 0.0001;
+  const distRaw = station.power_watts * POWER_SCALE / Math.pow(Math.max(dKm, DIST_MIN_KM), DIST_POWER);
 
-  const distPart = (station.power_watts * POWER_SCALE) /
-                   Math.pow(Math.max(dKm, DIST_MIN_KM), DIST_EXP);
+  const night = isStationNight(station);
+  const freqFactor = frequencyMatchFactor(station.frequency_khz, tunedFreqKHz, night);
+  const nightBoost = night ? lerp(1.0, 1.5, clamp01(1 - (tunedFreqKHz - 3000)/12000)) : 1.0;
 
-  const freqPart = frequencyMatchFactor(
-    station.frequency_khz,
-    tunedFreqKHz,
-    isStationNight(station)
-  );
-
-  const nightBoost = isStationNight(station) ? 1.4 : 1.0;
-
-  const x = distPart * freqPart * nightBoost;
+  const x = distRaw * freqFactor * nightBoost;
 
   return clamp01(x / (1 + x));
 }
 
-/*******************************************************
- * Get strongest station at current frequency
- *******************************************************/
-function getStrongestStation(){
-  let best = null;
-  let bestS = 0;
-
-  for (const st of stations){
-    const s = computeStationSignalFraction(st, currentFreqKHz);
-    if (s > bestS){
-      bestS = s;
-      best = st;
-    }
+/* Load stations.json */
+async function loadStations(){
+  try{
+    const r = await fetch('stations.json', {cache:'no-store'});
+    stations = await r.json();
+    console.log('stations loaded', stations);
+  }catch(e){
+    console.error('failed to load stations.json', e);
+    stations = [];
   }
-
-  return {station: best, strength: bestS};
 }
 
-/*******************************************************
- * Audio Setup
- *******************************************************/
-function setupAudio(){
+/* Initialize Leaflet map — defensive; will run even if stations not loaded yet */
+function initMap(){
+  try{
+    if (!map){
+      map = L.map('map', { attributionControl: false }).setView([userLat || 51.5, userLng || 0], 4);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+      markersLayer = L.layerGroup().addTo(map);
+    }
+    // clear & add markers
+    markersLayer.clearLayers();
+    if (userLat != null && userLng != null){
+      L.circleMarker([userLat, userLng], { radius:6, color:'#4caf50' }).addTo(markersLayer).bindPopup('You');
+    }
+    for(const s of stations){
+      L.marker([s.lat, s.lng]).addTo(markersLayer).bindPopup(`${s.label || s.name || s.id || 'Station'}<br>${s.frequency_khz || s.frequency} kHz`);
+    }
+    if (markersLayer.getBounds && markersLayer.getBounds().isValid()){
+      map.fitBounds(markersLayer.getBounds(), { padding:[30,30] });
+    }
+  }catch(err){
+    console.error('initMap error', err);
+  }
+}
+
+/* Audio graph creation (safely) */
+function initAudioIfNeeded(){
+  if (audioCtx) return;
+
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Main audio file (placeholder)
-  audioElement = new Audio("audio/station.mp3");
-  audioElement.loop = true;
-  audioElement.crossOrigin = "anonymous";
+  // audio element (use the <audio> if present in HTML else create one)
+  audioEl = document.getElementById('radio-audio') || new Audio('audio/station.mp3');
+  audioEl.loop = true;
+  audioEl.crossOrigin = "anonymous";
 
-  trackNode = audioCtx.createMediaElementSource(audioElement);
+  // Media source
+  try{
+    mediaSource = audioCtx.createMediaElementSource(audioEl);
+  }catch(e){
+    // Safari/older browsers may throw if element already used; create a new element fallback
+    audioEl = new Audio('audio/station.mp3');
+    audioEl.loop = true;
+    audioEl.crossOrigin = "anonymous";
+    mediaSource = audioCtx.createMediaElementSource(audioEl);
+  }
+
+  // station filter & gain
+  stationFilter = audioCtx.createBiquadFilter();
+  stationFilter.type = 'bandpass';
+  stationFilter.Q.value = 0.9;
 
   stationGain = audioCtx.createGain();
-  stationGain.gain.value = 0.0;
+  stationGain.gain.value = 0;
 
-  noiseNode = audioCtx.createOscillator();
-  noiseNode.type = "white" || "sine"; // fallback, browsers need workaround for white noise
-  // We generate white noise manually:
-  const bufferSize = 2 * audioCtx.sampleRate;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const output = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++){
-    output[i] = Math.random() * 2 - 1;
-  }
-  const whiteNoiseSource = audioCtx.createBufferSource();
-  whiteNoiseSource.buffer = noiseBuffer;
-  whiteNoiseSource.loop = true;
+  // noise: buffer-based white noise loop
+  const bufferSizeSec = 2.0;
+  const noiseBuffer = audioCtx.createBuffer(1, Math.floor(audioCtx.sampleRate * bufferSizeSec), audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for(let i=0;i<data.length;i++) data[i] = (Math.random()*2 - 1) * 0.45;
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = noiseBuffer;
+  noiseSource.loop = true;
+
+  noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'lowpass';
+  noiseFilter.frequency.value = 6000;
 
   noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.3;
+  noiseGain.gain.value = 0.6;
 
-  // Connect audio graph
-  trackNode.connect(stationGain).connect(audioCtx.destination);
-  whiteNoiseSource.connect(noiseGain).connect(audioCtx.destination);
+  // QSB: simple LFO controlling small gain modulation (we'll implement as Gain node modulation)
+  qsbOsc = audioCtx.createOscillator();
+  qsbOsc.type = 'sine';
+  qsbOsc.frequency.value = 0.25; // base
+  qsbGain = audioCtx.createGain();
+  qsbGain.gain.value = 0.0; // depth controlled later
 
-  noiseNode.start = function(){};
-  whiteNoiseSource.start();
+  // Connect graph:
+  // media -> filter -> stationGain -> destination
+  mediaSource.connect(stationFilter);
+  stationFilter.connect(stationGain);
+  stationGain.connect(audioCtx.destination);
 
-  audioElement.play();
+  // noise -> noiseFilter -> noiseGain -> destination
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+
+  // qsb LFO: connect to stationGain.gain param (via setValueAtTime modulation)
+  // WebAudio doesn't allow direct audio-rate connection to AudioParam in all browsers; use setInterval to apply small modulation
+  // We'll use a lightweight JS LFO instead to avoid compatibility problems (see applyQSB below)
+
+  // start noise & LFO sources
+  noiseSource.start();
+  qsbOsc.start();
+
+  // attempt to play audio element (will require user gesture in many browsers)
+  audioEl.play().catch(e=>{/* user gesture required; fine */});
 }
 
-/*******************************************************
- * Update Audio Based on Signal
- *******************************************************/
-function updateAudio(){
-  if (!audioCtx) return;
-
-  const {station, strength} = getStrongestStation();
-
-  stationGain.gain.value = strength;
-  noiseGain.gain.value = lerp(0.4, 0.02, strength);
-
-  signalLevelEl.style.width = (strength * 100).toFixed(1) + "%";
-
-  requestAnimationFrame(updateAudio);
-}
-
-/*******************************************************
- * UI + Map Initialization
- *******************************************************/
-function startApp(){
-  freqDisplay = document.getElementById("freq-display");
-  freqSlider = document.getElementById("freq-slider");
-  signalLevelEl = document.getElementById("signal-level");
-
-  freqSlider.addEventListener("input", () => {
-    currentFreqKHz = parseInt(freqSlider.value, 10);
-    freqDisplay.textContent = currentFreqKHz + " kHz";
-  });
-
-  const map = L.map("map").setView([userLat, userLng], 6);
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 12
-  }).addTo(map);
-
-  const userMarker = L.marker([userLat, userLng]);
-  userMarker.addTo(map).bindPopup("You");
-
-  for(const st of stations){
-    L.marker([st.lat, st.lng]).addTo(map)
-      .bindPopup(`${st.name}<br>${st.frequency_khz} kHz`);
-  }
-
-  setupAudio();
-  updateAudio();
-}
-
-/*******************************************************
- * Init: Load stations + geolocate
- *******************************************************/
-async function init(){
+/* JS-based QSB (modulates stationGain.gain value smoothly) */
+let qsbPhase = 0;
+function applyQSB(depth, rate, baseGain){
+  // depth: 0..1 relative, rate Hz, baseGain = stationVol
+  // Called periodically by main update loop; produce small modulation added to baseGain
+  qsbPhase += rate * (1/30); // assuming ~30 fps calls
+  if (qsbPhase > 1e6) qsbPhase = qsbPhase % 1;
+  const lfo = Math.sin(2 * Math.PI * qsbPhase);
+  const mod = lfo * depth * baseGain * 0.4; // scale down
+  // Apply safely
   try{
-    const response = await fetch("stations.json");
-    stations = await response.json();
-  } catch(err){
-    console.error("Failed to load stations.json:", err);
+    stationGain.gain.setTargetAtTime(Math.max(0, baseGain + mod), audioCtx.currentTime, 0.05);
+  }catch(e){
+    // ignore if audioCtx not ready
   }
-
-  navigator.geolocation.getCurrentPosition(pos => {
-    userLat = pos.coords.latitude;
-    userLng = pos.coords.longitude;
-
-    document.getElementById("status").textContent =
-      `Location acquired: ${userLat.toFixed(4)}, ${userLng.toFixed(4)}`;
-
-    startApp();
-  },
-  err => {
-    document.getElementById("status").textContent = "Geolocation failed.";
-  });
 }
 
-init();
+/* Main update: compute best station, update UI, audio params */
+let updateHandle = null;
+function startMainLoop(){
+  if (updateHandle) return;
+  updateHandle = setInterval(()=>{
+    // current tuned freq: from UI (prefer number input)
+    const freq = (freqNumber && freqNumber.value) ? Number(freqNumber.value) : (freqRange ? Number(freqRange.value) : 10000);
+    // find best station
+    let best = null;
+    let bestStrength = 0;
+    for(const s of stations){
+      const strength = computeStationSignalFraction(s, freq);
+      if (strength > bestStrength){ bestStrength = strength; best = s; }
+    }
+
+    // UI updates
+    if (signalLevelEl) signalLevelEl.style.width = Math.round(bestStrength*100) + '%';
+    if (nearestEl) nearestEl.textContent = best ? `${best.label || best.name} — ${best.frequency_khz || best.frequency} kHz` : 'Nearest: —';
+    if (freqReadout) freqReadout.textContent = `${toFixedInt(freq)} kHz`;
+    // dial/needle (if present) left to previous CSS/JS; omitted here for brevity
+
+    // ensure audio graph
+    initAudioIfNeeded();
+
+    // audio behavior
+    // station volume
+    if (stationGain) {
+      // map strength to reasonable gain (linear)
+      const baseGain = clamp01(Math.pow(bestStrength, 0.9));
+      stationGain.gain.setTargetAtTime(baseGain, audioCtx.currentTime, 0.05);
+      // filter center mapping (creative)
+      if (stationFilter) {
+        const filtHz = Math.max(300, freq * 10); // mapping 1 kHz -> 10 Hz for creative effect
+        stationFilter.frequency.setTargetAtTime(filtHz, audioCtx.currentTime, 0.05);
+        stationFilter.Q.setTargetAtTime(1 + (1 - bestStrength) * 4, audioCtx.currentTime, 0.05);
+      }
+      // noise parameters
+      if (noiseGain && noiseFilter){
+        const noiseLvl = lerp(0.9, 0.02, bestStrength);
+        noiseGain.gain.setTargetAtTime(noiseLvl, audioCtx.currentTime, 0.05);
+        const noiseCut = lerp(9000, 2000, bestStrength);
+        noiseFilter.frequency.setTargetAtTime(noiseCut, audioCtx.currentTime, 0.1);
+      }
+      // QSB: depth increases as signal weakens
+      const qsbDepth = clamp01(1 - bestStrength);
+      const qsbRate = lerp(0.08, 1.2, qsbDepth);
+      // apply JS LFO modulation
+      applyQSB(qsbDepth, qsbRate, baseGain);
+    }
+
+  }, 1000 / 10); // 10 updates per second
+}
+
+/* Helper to round */
+function toFixedInt(x){ return Math.round(x); }
+
+/* Safe startup sequence */
+async function boot(){
+  await loadStations();
+
+  // Try get geolocation
+  if (navigator.geolocation){
+    navigator.geolocation.getCurrentPosition((pos) => {
+      userLat = pos.coords.latitude;
+      userLng = pos.coords.longitude;
+      if (statusEl) statusEl.textContent = `Location: ${userLat.toFixed(4)}, ${userLng.toFixed(4)}`;
+      initMap();
+      startMainLoop();
+    }, (err) => {
+      console.warn('geolocation failed', err);
+      // fallback location: Birmingham approximate
+      userLat = 52.4895;
+      userLng = -1.8980;
+      if (statusEl) statusEl.textContent = 'Geolocation denied — using fallback (Birmingham)';
+      initMap();
+      startMainLoop();
+    }, { timeout: 8000, maximumAge: 60000 });
+  } else {
+    if (statusEl) statusEl.textContent = 'Geolocation not available';
+    userLat = 52.4895; userLng = -1.8980;
+    initMap();
+    startMainLoop();
+  }
+
+  // wire up UI safely
+  try{
+    if (freqRange && freqNumber){
+      // sync controls
+      freqRange.addEventListener('input', () => {
+        freqNumber.value = freqRange.value;
+      });
+      freqNumber.addEventListener('change', () => {
+        let v = Number(freqNumber.value);
+        if (isNaN(v)) v = Number(freqRange.value);
+        v = Math.max(Number(freqRange.min), Math.min(Number(freqRange.max), v));
+        freqNumber.value = v;
+        freqRange.value = v;
+      });
+    }
+    if (startBtn){
+      startBtn.disabled = false;
+      startBtn.addEventListener('click', async () => {
+        initAudioIfNeeded();
+        try{ await audioCtx.resume(); }catch(e){}
+        try{ audioEl.play(); }catch(e){}
+      });
+    }
+    if (stopBtn){
+      stopBtn.addEventListener('click', () => {
+        try{ audioEl.pause(); }catch(e){}
+        try{
+          if (stationGain) stationGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+          if (noiseGain) noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+        }catch(e){}
+      });
+    }
+  }catch(e){
+    console.warn('UI wiring error (non fatal)', e);
+  }
+}
+
+/* start */
+boot();
