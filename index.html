@@ -1,24 +1,28 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>lonli.live</title>
 
-  <!-- Leaflet map CSS + JS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <!-- Leaflet map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Local styles -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
-
-  <h1>lonli.live 0.1.0</h1>
+  <h1>lonli.live</h1>
 
   <div id="status">Waiting for geolocation…</div>
 
-  <button id="start-btn" disabled>Start Radio</button>
+  <div id="controls">
+    <label>Frequency (kHz):</label>
+    <input type="range" id="freq" min="500" max="30000" step="1" value="10000" />
+    <span id="freq-display">10000 kHz</span>
+
+    <button id="start-btn" disabled>Start Radio</button>
+  </div>
 
   <div id="signal-container">
     <label>Signal strength:</label>
@@ -28,8 +32,6 @@
   <h2>Map</h2>
   <div id="map"></div>
 
-  <!-- Local JavaScript -->
   <script src="main.js"></script>
-
 </body>
 </html>
