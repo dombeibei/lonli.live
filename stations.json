@@ -1,26 +1,29 @@
 [
   {
-    "name": "North Atlantic Relay",
-    "lat": 52.0,
-    "lng": -30.0,
-    "freq": 10000,
-    "power": 50000,
+    "id": "lonli-london",
+    "label": "Lonli Relay — London",
+    "lat": 51.5074,
+    "lng": -0.1278,
+    "frequency_khz": 6000,
+    "power_watts": 2000,
     "audio": "audio/station.mp3"
   },
   {
-    "name": "Tokyo Wideband",
+    "id": "lonli-ny",
+    "label": "Lonli SW — New York",
+    "lat": 40.7128,
+    "lng": -74.0060,
+    "frequency_khz": 12000,
+    "power_watts": 5000,
+    "audio": "audio/station.mp3"
+  },
+  {
+    "id": "lonli-tokyo",
+    "label": "Lonli Shortwave — Tokyo",
     "lat": 35.6895,
     "lng": 139.6917,
-    "freq": 15000,
-    "power": 40000,
-    "audio": "audio/station.mp3"
-  },
-  {
-    "name": "Sao Paulo SW",
-    "lat": -23.55,
-    "lng": -46.63,
-    "freq": 9000,
-    "power": 60000,
+    "frequency_khz": 15000,
+    "power_watts": 3000,
     "audio": "audio/station.mp3"
   }
 ]
