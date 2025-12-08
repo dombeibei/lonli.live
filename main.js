@@ -3,7 +3,7 @@
  * Complete client script implementing:
  * - stations.json load
  * - geolocation with fallback
- * - Leaflet map & station markers
+ * - Interactie leaflet map & station markers
  * - retro UI wiring (freq slider/number/dial)
  * - Start / Stop / Scan buttons
  * - propagation model (distance, freq match, day/night)
