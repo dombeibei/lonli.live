@@ -1,4 +1,4 @@
-// Transmitter
+// Transmitter test
 const transmitter = { lat: 51.0, lon: -0.1, power: 50000, frequency: 9.6 };
 
 // DOM
