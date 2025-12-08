@@ -46,9 +46,15 @@ button:disabled {
   height: 100%;
   background: #4caf50;
 }
+
+/* Map */
 #map {
   width: 100%;
   height: 300px;
   margin-top: 20px;
   border: 1px solid #555;
+}
+
+h2 {
+  margin-top: 30px;
 }
