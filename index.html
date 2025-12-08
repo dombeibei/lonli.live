@@ -4,42 +4,28 @@
   <meta charset="UTF-8">
   <title>lonli.live</title>
 
-  <!-- Leaflet CSS MUST load before your CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmGHMNp3jVxNk7wC9FTez2f2V+4pFk="
-    crossorigin=""
-  />
-
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmGHMNp3jVxNk7wC9FTez2f2V+4pFk=" crossorigin=""/>
   <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
-  <h1>lonli.live 0.1</h1>
+<h1>lonli.live 0.1</h1>
 
-  <div id="status">Waiting for geolocation…</div>
+<div id="status">Waiting for geolocation…</div>
 
-  <!-- Start button ENABLED so user can trigger geolocation -->
-  <button id="start-btn">Start Radio</button>
+<button id="start-btn">Start Radio</button>
 
-  <div id="signal-container">
-    <label>Signal strength:</label>
-    <div id="signal-bar"><div id="signal-level"></div></div>
-  </div>
+<div id="signal-container">
+  <label>Signal strength:</label>
+  <div id="signal-bar"><div id="signal-level"></div></div>
+</div>
 
-  <h2>Map</h2>
-  <div id="map"></div>
+<h2>Map</h2>
+<div id="map"></div>
 
-  <!-- Leaflet JS MUST load before your main.js -->
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-o9N1j7kKkS1YlYhSUhtT3vuMlFeoLYiWsYtvPwZgWYo="
-    crossorigin=""
-  ></script>
-
-  <script src="main.js"></script>
-
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-o9N1j7kKkS1YlYhSUhtT3vuMlFeoLYiWsYtvPwZgWYo=" crossorigin=""></script>
+<script src="main.js"></script>
 </body>
 </html>
