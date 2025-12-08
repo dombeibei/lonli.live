@@ -1,0 +1,26 @@
+[
+  {
+    "name": "North Atlantic Relay",
+    "lat": 52.0,
+    "lng": -30.0,
+    "freq": 10000,
+    "power": 50000,
+    "audio": "audio/station.mp3"
+  },
+  {
+    "name": "Tokyo Wideband",
+    "lat": 35.6895,
+    "lng": 139.6917,
+    "freq": 15000,
+    "power": 40000,
+    "audio": "audio/station.mp3"
+  },
+  {
+    "name": "Sao Paulo SW",
+    "lat": -23.55,
+    "lng": -46.63,
+    "freq": 9000,
+    "power": 60000,
+    "audio": "audio/station.mp3"
+  }
+]
