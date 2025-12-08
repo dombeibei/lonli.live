@@ -2,7 +2,7 @@ body {
   font-family: Arial, sans-serif;
   background: #111;
   color: #eee;
-  margin: 20px;
+  margin: 40px;
 }
 
 h1 {
@@ -45,4 +45,16 @@ button:disabled {
   width: 0%;
   height: 100%;
   background: #4caf50;
+}
+
+/* Map */
+#map {
+  width: 100%;
+  height: 300px;
+  margin-top: 20px;
+  border: 1px solid #555;
+}
+
+h2 {
+  margin-top: 30px;
 }
