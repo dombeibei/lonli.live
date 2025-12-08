@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>lonli.live — Radio Simulation</title>
+  <title>lonli.live — Retro Shortwave Simulator</title>
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -12,44 +12,58 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <h1>lonli.live</h1>
-    <p class="muted">Simulated shortwave radio — day/night propagation & static</p>
+  <header class="retro-header">
+    <div class="brand">
+      <div class="logo">•</div>
+      <h1>lonli.live</h1>
+    </div>
+    <div class="subtitle">Interactive shortwave radio — retro dial, scanning & QSB</div>
   </header>
 
-  <main>
-    <section id="controls">
-      <div id="status">Waiting for geolocation…</div>
+  <main class="layout">
+    <aside class="panel controls">
+      <div id="status" class="status">Waiting for geolocation…</div>
 
-      <label for="freq">Frequency (kHz)</label>
-      <div class="freq-row">
+      <div class="dial">
+        <div class="dial-face">
+          <div id="dial-needle" class="needle" style="transform: rotate(0deg)"></div>
+        </div>
+        <div class="freq-display">
+          <div class="label">Frequency</div>
+          <div id="freq-readout" class="freq">10000 kHz</div>
+        </div>
+      </div>
+
+      <div class="tuning">
         <input id="freq" type="range" min="150" max="30000" step="1" value="10000" />
         <input id="freq-number" type="number" min="150" max="30000" value="10000" />
       </div>
 
       <div class="buttons">
-        <button id="start-btn" disabled>Start Radio</button>
+        <button id="start-btn" disabled>Start</button>
         <button id="stop-btn" disabled>Stop</button>
+        <button id="scan-btn" disabled>Scan/Seek</button>
       </div>
 
       <div class="signal">
-        <label>Signal strength</label>
+        <label>Signal</label>
         <div id="signal-bar"><div id="signal-level"></div></div>
-        <div id="nearest" class="muted">Nearest station: —</div>
+        <div id="nearest" class="muted">Nearest: —</div>
       </div>
 
-      <div class="note muted">
-        The simulation mixes a single demo audio file with generated static.
+      <div class="settings muted">
+        <div>QSB depth: <span id="qsb-depth-display">medium</span></div>
+        <div>Scan step: <span id="scan-step-display">100 kHz</span></div>
       </div>
-    </section>
+    </aside>
 
-    <section id="map-section">
-      <h2>Map</h2>
+    <section class="panel map-panel">
+      <h2>Map & Stations</h2>
       <div id="map"></div>
     </section>
   </main>
 
-  <!-- Hidden audio element used as source (one demo audio file). Keep audio/station.mp3 in repo. -->
+  <!-- Hidden audio element (demo audio). Keep audio/station.mp3 in repo. -->
   <audio id="radio-audio" src="audio/station.mp3" crossorigin="anonymous" preload="auto"></audio>
 
   <script src="main.js"></script>
