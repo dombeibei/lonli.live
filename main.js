@@ -1,9 +1,17 @@
 //--------------------------------------------------------
-// lonli.live 0.1 MVP — Audio MP3 + geolocation
+// lonli.live 0.0.1 with:
+// • Station audio
+// • Static + fading
+// • Map test showing transmitter + user
 //--------------------------------------------------------
 
-// Simulated transmitter
-const transmitter = { lat: 51.0, lon: -0.1, power: 50000, frequency: 9.6 };
+// Hardcoded simulated transmitter
+const transmitter = {
+  lat: 51.0,      // example location (London-ish)
+  lon: -0.1,
+  power: 50000,
+  frequency: 9.6  // MHz
+};
 
 // DOM elements
 const statusEl = document.getElementById("status");
@@ -19,40 +27,100 @@ let gainNode = null;
 let running = false;
 
 //--------------------------------------------------------
-// Distance (Haversine)
+// Map initialisation (Leaflet)
+//--------------------------------------------------------
+let map = L.map('map').setView([51.0, -0.1], 3);
+
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 6,
+  minZoom: 2
+}).addTo(map);
+
+let userMarker = null;
+let txMarker = L.marker([transmitter.lat, transmitter.lon]).addTo(map);
+txMarker.bindPopup(`Transmitter<br>${transmitter.frequency} MHz`);
+
+//--------------------------------------------------------
+// Step 1: Get Geolocation
+//--------------------------------------------------------
+navigator.geolocation.getCurrentPosition(
+  pos => {
+    userPos = {
+      lat: pos.coords.latitude,
+      lon: pos.coords.longitude
+    };
+
+    statusEl.textContent = `Location acquired: ${userPos.lat.toFixed(3)}, ${userPos.lon.toFixed(3)}`;
+    startBtn.disabled = false;
+
+    // Add user to map
+    if (userMarker) map.removeLayer(userMarker);
+    userMarker = L.marker([userPos.lat, userPos.lon]).addTo(map);
+    userMarker.bindPopup("You are here");
+
+    // Auto zoom to show both user + transmitter
+    const bounds = L.latLngBounds([
+      [userPos.lat, userPos.lon],
+      [transmitter.lat, transmitter.lon]
+    ]);
+    map.fitBounds(bounds, { padding: [40, 40] });
+  },
+
+  err => {
+    statusEl.textContent = "Geolocation permission denied. Cannot simulate propagation.";
+  }
+);
+
+//--------------------------------------------------------
+// Haversine distance (km)
+//--------------------------------------------------------
 function distanceKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2)**2 +
-            Math.cos(lat1*Math.PI/180) *
-            Math.cos(lat2*Math.PI/180) *
+            Math.cos(lat1 * Math.PI/180) *
+            Math.cos(lat2 * Math.PI/180) *
             Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 //--------------------------------------------------------
-// Signal strength
+// Propagation Model (very simple MVP)
+//--------------------------------------------------------
 function computeSignalStrength() {
   if (!userPos) return 0;
-  const d = distanceKm(userPos.lat, userPos.lon, transmitter.lat, transmitter.lon);
-  let base = transmitter.power / (d*d) / 50000;
 
+  // Distance attenuation
+  const d = distanceKm(userPos.lat, userPos.lon, transmitter.lat, transmitter.lon);
+  let base = transmitter.power / (d * d);
+
+  // Normalise roughly to 0–1
+  base = base / 50000;
+
+  // Fading: slow wobble + random microdips
   const t = performance.now() / 1000;
-  const slow = 0.85 + 0.15 * Math.sin(t*0.5);
-  const fast = 0.9 + 0.1 * Math.random();
+  const slowWobble = 0.85 + 0.15 * Math.sin(t * 0.5);
+  const randomDip = 0.9 + 0.1 * Math.random();
+
+  let fading = slowWobble * randomDip;
+
+  // Day/night effect
   const hour = new Date().getUTCHours();
   const nightBoost = (hour >= 18 || hour <= 6) ? 1.3 : 0.7;
 
-  return Math.max(0, Math.min(1, base * slow * fast * nightBoost));
+  let signal = base * fading * nightBoost;
+
+  return Math.max(0, Math.min(1, signal));
 }
 
 //--------------------------------------------------------
-// Audio setup
+// Audio: Noise + Real Station Audio
+//--------------------------------------------------------
 async function startAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Noise
+  // 1. Noise generator
   const bufferSize = 2 * audioCtx.sampleRate;
   const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
@@ -63,7 +131,7 @@ async function startAudio() {
   noiseNode.buffer = noiseBuffer;
   noiseNode.loop = true;
 
-  // Station MP3
+  // 2. Load station audio file
   const audioFile = await fetch('audio/station.mp3');
   const audioArray = await audioFile.arrayBuffer();
   const stationBuffer = await audioCtx.decodeAudioData(audioArray);
@@ -72,10 +140,11 @@ async function startAudio() {
   stationNode.buffer = stationBuffer;
   stationNode.loop = true;
 
-  // Gain
+  // 3. Gain control
   gainNode = audioCtx.createGain();
   gainNode.gain.value = 0;
 
+  // 4. Connect nodes
   noiseNode.connect(gainNode);
   stationNode.connect(gainNode);
   gainNode.connect(audioCtx.destination);
@@ -85,41 +154,34 @@ async function startAudio() {
 }
 
 //--------------------------------------------------------
-// Update loop
+// Animation Loop: update fading + signal bar
+//--------------------------------------------------------
 function update() {
   if (!running) return;
+
   const signal = computeSignalStrength();
   signalLevelEl.style.width = (signal * 100).toFixed(1) + "%";
-  if (gainNode) gainNode.gain.value = 0.2 + signal*0.8;
+
+  if (gainNode) {
+    // Stronger signal → louder station, quieter noise
+    gainNode.gain.value = 0.2 + (signal * 0.8);
+  }
+
   requestAnimationFrame(update);
 }
 
 //--------------------------------------------------------
-// Start button
+// Start Button
+//--------------------------------------------------------
 startBtn.addEventListener("click", () => {
   if (running) return;
+
+  statusEl.textContent = "Starting radio…";
   running = true;
-  statusEl.textContent = "Requesting location…";
+  startBtn.disabled = true;
 
-  if ("geolocation" in navigator) {
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-        statusEl.textContent = `Location acquired: ${userPos.lat.toFixed(3)}, ${userPos.lon.toFixed(3)}`;
+  startAudio();
+  update();
 
-        startAudio();
-        update();
-
-        statusEl.textContent = `Tuned to ${transmitter.frequency} MHz`;
-        startBtn.disabled = true;
-      },
-      err => {
-        statusEl.textContent = "Geolocation permission denied or unavailable.";
-        running = false;
-      }
-    );
-  } else {
-    statusEl.textContent = "Geolocation not supported by your browser.";
-    running = false;
-  }
+  statusEl.textContent = `Tuned to ${transmitter.frequency} MHz`;
 });
