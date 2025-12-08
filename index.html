@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>lonli.live — Retro Shortwave Simulator</title>
+  <title>lonli.live — Retro Shortwave</title>
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -17,12 +17,12 @@
       <div class="logo">•</div>
       <h1>lonli.live</h1>
     </div>
-    <div class="subtitle">Interactive shortwave radio — retro dial, scanning & QSB</div>
+    <div class="subtitle">Retro shortwave simulator — tuning, scan, QSB</div>
   </header>
 
   <main class="layout">
     <aside class="panel controls">
-      <div id="status" class="status">Waiting for geolocation…</div>
+      <div id="status" class="status muted">Waiting for geolocation…</div>
 
       <div class="dial">
         <div class="dial-face">
@@ -30,13 +30,13 @@
         </div>
         <div class="freq-display">
           <div class="label">Frequency</div>
-          <div id="freq-readout" class="freq">10000 kHz</div>
+          <div id="freq-readout" class="freq">6000 kHz</div>
         </div>
       </div>
 
       <div class="tuning">
-        <input id="freq" type="range" min="150" max="30000" step="1" value="10000" />
-        <input id="freq-number" type="number" min="150" max="30000" value="10000" />
+        <input id="freq" type="range" min="150" max="30000" step="1" value="6000" />
+        <input id="freq-number" type="number" min="150" max="30000" value="6000" />
       </div>
 
       <div class="buttons">
@@ -52,18 +52,17 @@
       </div>
 
       <div class="settings muted">
-        <div>QSB depth: <span id="qsb-depth-display">medium</span></div>
-        <div>Scan step: <span id="scan-step-display">100 kHz</span></div>
+        QSB depth: <span id="qsb-depth-display">auto</span> · Scan step: <span id="scan-step-display">100 kHz</span>
       </div>
     </aside>
 
     <section class="panel map-panel">
-      <h2>Map & Stations</h2>
+      <h2>Map</h2>
       <div id="map"></div>
     </section>
   </main>
 
-  <!-- Hidden audio element (demo audio). Keep audio/station.mp3 in repo. -->
+  <!-- Hidden audio element used for playback -->
   <audio id="radio-audio" src="audio/station.mp3" crossorigin="anonymous" preload="auto"></audio>
 
   <script src="main.js"></script>
