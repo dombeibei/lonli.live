@@ -1,29 +1,62 @@
 [
   {
-    "id": "lonli-london",
-    "label": "Lonli Relay — London",
-    "lat": 51.5074,
-    "lng": -0.1278,
+    "id": "bbc-world",
+    "label": "BBC World Service - Ras Al Khaimah (sim)",
+    "lat": 25.8000,
+    "lng": 55.9600,
     "frequency_khz": 6000,
-    "power_watts": 2000,
-    "audio": "audio/station.mp3"
+    "power_watts": 10000,
+    "audio": "audio/station.mp3",
+    "org": "BBC"
   },
   {
-    "id": "lonli-ny",
-    "label": "Lonli SW — New York",
-    "lat": 40.7128,
-    "lng": -74.0060,
-    "frequency_khz": 12000,
-    "power_watts": 5000,
-    "audio": "audio/station.mp3"
+    "id": "voa-sa",
+    "label": "Voice of America - Greenville, NC (sim)",
+    "lat": 35.5007,
+    "lng": -77.3899,
+    "frequency_khz": 7540,
+    "power_watts": 10000,
+    "audio": "audio/station.mp3",
+    "org": "VOA"
   },
   {
-    "id": "lonli-tokyo",
-    "label": "Lonli Shortwave — Tokyo",
+    "id": "nhk",
+    "label": "NHK World - Japan (sim)",
     "lat": 35.6895,
     "lng": 139.6917,
-    "frequency_khz": 15000,
-    "power_watts": 3000,
-    "audio": "audio/station.mp3"
+    "frequency_khz": 11855,
+    "power_watts": 8000,
+    "audio": "audio/station.mp3",
+    "org": "NHK"
+  },
+  {
+    "id": "cri",
+    "label": "China Radio Int. - Panyu (sim)",
+    "lat": 23.0300,
+    "lng": 113.3700,
+    "frequency_khz": 9730,
+    "power_watts": 12000,
+    "audio": "audio/station.mp3",
+    "org": "CRI"
+  },
+  {
+    "id": "rnzi",
+    "label": "RNZI - Auckland (sim)",
+    "lat": -36.8485,
+    "lng": 174.7633,
+    "frequency_khz": 6105,
+    "power_watts": 5000,
+    "audio": "audio/station.mp3",
+    "org": "RNZI"
+  },
+  {
+    "id": "wrmi",
+    "label": "WRMI - Okeechobee (sim)",
+    "lat": 27.2408,
+    "lng": -80.8295,
+    "frequency_khz": 9950,
+    "power_watts": 20000,
+    "audio": "audio/station.mp3",
+    "org": "WRMI"
   }
 ]
