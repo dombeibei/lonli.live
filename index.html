@@ -1,36 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>lonli.live</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>lonli.live — Radio Simulation</title>
 
-  <!-- Leaflet map -->
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-  <h1>lonli.live</h1>
+  <header>
+    <h1>lonli.live</h1>
+    <p class="muted">Simulated shortwave radio — day/night propagation & static</p>
+  </header>
 
-  <div id="status">Waiting for geolocation…</div>
+  <main>
+    <section id="controls">
+      <div id="status">Waiting for geolocation…</div>
 
-  <div id="controls">
-    <label>Frequency (kHz):</label>
-    <input type="range" id="freq" min="500" max="30000" step="1" value="10000" />
-    <span id="freq-display">10000 kHz</span>
+      <label for="freq">Frequency (kHz)</label>
+      <div class="freq-row">
+        <input id="freq" type="range" min="150" max="30000" step="1" value="10000" />
+        <input id="freq-number" type="number" min="150" max="30000" value="10000" />
+      </div>
 
-    <button id="start-btn" disabled>Start Radio</button>
-  </div>
+      <div class="buttons">
+        <button id="start-btn" disabled>Start Radio</button>
+        <button id="stop-btn" disabled>Stop</button>
+      </div>
 
-  <div id="signal-container">
-    <label>Signal strength:</label>
-    <div id="signal-bar"><div id="signal-level"></div></div>
-  </div>
+      <div class="signal">
+        <label>Signal strength</label>
+        <div id="signal-bar"><div id="signal-level"></div></div>
+        <div id="nearest" class="muted">Nearest station: —</div>
+      </div>
 
-  <h2>Map</h2>
-  <div id="map"></div>
+      <div class="note muted">
+        The simulation mixes a single demo audio file with generated static.
+      </div>
+    </section>
+
+    <section id="map-section">
+      <h2>Map</h2>
+      <div id="map"></div>
+    </section>
+  </main>
+
+  <!-- Hidden audio element used as source (one demo audio file). Keep audio/station.mp3 in repo. -->
+  <audio id="radio-audio" src="audio/station.mp3" crossorigin="anonymous" preload="auto"></audio>
 
   <script src="main.js"></script>
 </body>
