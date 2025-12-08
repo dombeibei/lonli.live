@@ -1,62 +1,47 @@
-body {
-  background: #111;
-  color: #eee;
-  font-family: Arial, sans-serif;
-  margin: 40px;
+:root{
+  --bg:#0f1113;
+  --panel:#17181a;
+  --muted:#9aa0a6;
+  --accent:#4caf50;
 }
 
-h1 {
-  margin-bottom: 20px;
+*{box-sizing:border-box}
+body{
+  margin:20px;
+  font-family:Inter,system-ui,Arial,sans-serif;
+  background:var(--bg);
+  color:#e8eef2;
 }
 
-#status {
-  margin-bottom: 20px;
+header h1{margin:0;font-size:1.3rem}
+header .muted{margin:6px 0 18px;color:var(--muted);font-size:0.95rem}
+
+main{display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start}
+
+#controls{
+  background:var(--panel);padding:16px;border-radius:8px;border:1px solid #222;
+  min-height:220px;
 }
 
-#controls {
-  margin-bottom: 20px;
-}
+label{display:block;margin-bottom:8px}
+.freq-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+#freq{flex:1}
+#freq-number{width:110px;padding:6px;background:#0c0d0e;color:#fff;border:1px solid #222;border-radius:4px}
 
-#freq {
-  width: 300px;
-  margin-left: 10px;
-}
+.buttons{margin-bottom:12px}
+button{padding:8px 12px;background:#222;border:1px solid #333;color:#fff;border-radius:6px;cursor:pointer;margin-right:8px}
+button:disabled{opacity:0.45;cursor:not-allowed}
 
-button {
-  padding: 10px 16px;
-  background: #444;
-  color: #fff;
-  border: 1px solid #666;
-  margin-left: 10px;
-}
+.signal{margin-top:12px}
+#signal-bar{width:100%;height:18px;background:#0a0b0c;border:1px solid #222;border-radius:4px;overflow:hidden}
+#signal-level{width:0%;height:100%;background:linear-gradient(90deg,var(--accent),#8bc34a);transition:width 220ms linear}
 
-button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
+#map{width:100%;height:640px;border-radius:8px;border:1px solid #222}
 
-#signal-container {
-  margin-top: 20px;
-}
+.muted{color:var(--muted);font-size:0.95rem}
+.note{margin-top:10px;font-size:0.9rem}
 
-#signal-bar {
-  width: 300px;
-  height: 20px;
-  background: #333;
-  border: 1px solid #666;
-  margin-top: 5px;
-}
-
-#signal-level {
-  width: 0%;
-  height: 100%;
-  background: #4caf50;
-  transition: width 0.3s linear;
-}
-
-#map {
-  width: 100%;
-  height: 300px;
-  margin-top: 20px;
-  border: 1px solid #555;
+@media (max-width:900px){
+  main{grid-template-columns:1fr}
+  #map{height:420px}
 }
