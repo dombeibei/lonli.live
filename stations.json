@@ -1,51 +1,72 @@
 [
   {
-    "name": "Lonli Birmingham (Test Station)",
+    "id": "birmingham-test",
+    "label": "Birmingham Test (Local)",
     "lat": 52.4895,
     "lng": -1.8980,
     "frequency_khz": 6000,
-    "power_watts": 5000
+    "power_watts": 5000,
+    "audio": "audio/station.mp3",
+    "org": "Test"
   },
   {
-    "name": "BBC World Service (Ascension Island)",
-    "lat": -7.9467,
-    "lng": -14.3559,
-    "frequency_khz": 5970,
-    "power_watts": 250000
+    "id": "bbc-world",
+    "label": "BBC World Service (sim)",
+    "lat": 25.8,
+    "lng": 55.96,
+    "frequency_khz": 6000,
+    "power_watts": 10000,
+    "audio": "audio/station.mp3",
+    "org": "BBC"
   },
   {
-    "name": "Voice of America – Greenville",
+    "id": "voa",
+    "label": "Voice of America (sim)",
     "lat": 35.5951,
     "lng": -77.3767,
-    "frequency_khz": 11800,
-    "power_watts": 250000
+    "frequency_khz": 7540,
+    "power_watts": 10000,
+    "audio": "audio/station.mp3",
+    "org": "VOA"
   },
   {
-    "name": "NHK Radio Japan",
+    "id": "nhk",
+    "label": "NHK Radio Japan (sim)",
     "lat": 35.6895,
     "lng": 139.6917,
-    "frequency_khz": 15130,
-    "power_watts": 300000
+    "frequency_khz": 11855,
+    "power_watts": 8000,
+    "audio": "audio/station.mp3",
+    "org": "NHK"
   },
   {
-    "name": "Radio New Zealand International (RNZI)",
-    "lat": -41.2769,
-    "lng": 174.7772,
-    "frequency_khz": 9700,
-    "power_watts": 100000
-  },
-  {
-    "name": "China Radio International (Beijing)",
+    "id": "cri",
+    "label": "China Radio Int. (sim)",
     "lat": 39.9042,
     "lng": 116.4074,
-    "frequency_khz": 7345,
-    "power_watts": 500000
+    "frequency_khz": 9730,
+    "power_watts": 12000,
+    "audio": "audio/station.mp3",
+    "org": "CRI"
   },
   {
-    "name": "WRMI – Radio Miami International",
-    "lat": 25.7617,
-    "lng": -80.1918,
-    "frequency_khz": 9955,
-    "power_watts": 100000
+    "id": "rnzi",
+    "label": "RNZI (sim)",
+    "lat": -36.8485,
+    "lng": 174.7633,
+    "frequency_khz": 6105,
+    "power_watts": 5000,
+    "audio": "audio/station.mp3",
+    "org": "RNZI"
+  },
+  {
+    "id": "wrmi",
+    "label": "WRMI (sim)",
+    "lat": 27.2408,
+    "lng": -80.8295,
+    "frequency_khz": 9950,
+    "power_watts": 20000,
+    "audio": "audio/station.mp3",
+    "org": "WRMI"
   }
 ]
