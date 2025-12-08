@@ -1,33 +1,40 @@
-/**
- * lonli.live v0.1.0
- * --------------------------------------------------------
- * Handles:
- * - Geolocation
- * - Map initialization
- * - Signal strength simulation
- * - Radio audio playback
- * --------------------------------------------------------
- */
+let userLat = null;
+let userLng = null;
+
+let map = null;
+let stations = [];
+let currentStation = null;
 
 const statusEl = document.getElementById("status");
 const startBtn = document.getElementById("start-btn");
+const freqSlider = document.getElementById("freq");
+const freqDisplay = document.getElementById("freq-display");
 const signalLevel = document.getElementById("signal-level");
 
-let userLat = null;
-let userLng = null;
-let map = null;
-let signalInterval = null;
+// WebAudio Pipeline ------------------------------------
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const gainNode = audioCtx.createGain();
+const filter = audioCtx.createBiquadFilter();
 
-// Optional audio (this will auto-load from /audio/station.mp3)
-const radioAudio = new Audio("audio/station.mp3");
-radioAudio.loop = true;  // Continuous playback
+gainNode.gain.value = 0;
+filter.type = "bandpass";
+filter.frequency.value = 10000; // default frequency
 
+filter.connect(gainNode).connect(audioCtx.destination);
 
-// ---------------------------------------------------------
-// 1. Request Geolocation
-// ---------------------------------------------------------
+let audioElement = new Audio();
+let audioSource = null;
+
+// -------------------------------------------------------
+// Load transmitters
+fetch("stations.json")
+  .then(r => r.json())
+  .then(data => { stations = data; });
+
+// -------------------------------------------------------
+// Geolocation
 navigator.geolocation.getCurrentPosition(
-  (pos) => {
+  pos => {
     userLat = pos.coords.latitude;
     userLng = pos.coords.longitude;
 
@@ -37,52 +44,105 @@ navigator.geolocation.getCurrentPosition(
     startBtn.disabled = false;
     initMap();
   },
-  (err) => {
-    statusEl.textContent = "Geolocation failed or denied.";
+  err => {
+    statusEl.textContent = "Geolocation failed.";
   }
 );
 
-
-// ---------------------------------------------------------
-// 2. Initialize Leaflet Map
-// ---------------------------------------------------------
+// -------------------------------------------------------
+// Map
 function initMap() {
-  map = L.map("map").setView([userLat, userLng], 11);
+  map = L.map("map").setView([userLat, userLng], 3);
 
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19
-  }).addTo(map);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
 
   L.marker([userLat, userLng]).addTo(map)
     .bindPopup("You are here.")
     .openPopup();
+
+  stations.forEach(s => {
+    L.marker([s.lat, s.lng]).addTo(map).bindPopup(s.name);
+  });
 }
 
-
-// ---------------------------------------------------------
-// 3. Start Radio Simulation
-// ---------------------------------------------------------
-startBtn.addEventListener("click", () => {
-  statusEl.textContent = "Radio active…";
-
-  // Start audio if available
-  try {
-    radioAudio.play();
-  } catch (e) {
-    console.warn("Audio could not play automatically.");
-  }
-
-  // Begin simulated signal updates
-  signalInterval = setInterval(updateSignalStrength, 1000);
+// -------------------------------------------------------
+// Frequency tuning
+freqSlider.addEventListener("input", () => {
+  const f = parseInt(freqSlider.value, 10);
+  freqDisplay.textContent = `${f} kHz`;
+  filter.frequency.value = f;
+  selectStation(f);
 });
 
+// -------------------------------------------------------
+// Select station with strongest signal at this frequency
+function selectStation(frequency) {
+  let best = null;
+  let bestStrength = 0;
 
-// ---------------------------------------------------------
-// 4. Signal Strength Logic
-// ---------------------------------------------------------
-function updateSignalStrength() {
-  // Example random noise simulation (placeholder)
-  const strength = Math.floor(Math.random() * 100);
+  stations.forEach(s => {
+    const df = Math.abs(s.freq - frequency);
+    const tunedPenalty = Math.max(0, 1 - df / 3000); // within 3 kHz = strong
 
-  signalLevel.style.width = strength + "%";
+    const distance = haversine(userLat, userLng, s.lat, s.lng);
+    const distancePenalty = 1 / Math.max(distance, 1);
+
+    const strength = tunedPenalty * distancePenalty * (s.power / 10000);
+
+    if (strength > bestStrength) {
+      bestStrength = strength;
+      best = s;
+    }
+  });
+
+  currentStation = best;
+
+  updateSignalBar(bestStrength);
+  updateAudio(best);
 }
+
+function updateSignalBar(str) {
+  const pct = Math.min(100, Math.max(0, str * 100));
+  signalLevel.style.width = pct + "%";
+}
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2)**2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// -------------------------------------------------------
+// Audio control
+function updateAudio(station) {
+  if (!station) {
+    gainNode.gain.value = 0;
+    return;
+  }
+
+  if (audioElement.src !== station.audio) {
+    audioElement.src = station.audio;
+    audioElement.loop = true;
+
+    if (audioSource) audioSource.disconnect();
+    audioSource = audioCtx.createMediaElementSource(audioElement);
+    audioSource.connect(filter);
+
+    if (!audioElement.paused) audioElement.play();
+  }
+
+  gainNode.gain.value = 0.8;
+}
+
+// -------------------------------------------------------
+startBtn.addEventListener("click", async () => {
+  await audioCtx.resume();
+  audioElement.play();
+  selectStation(parseInt(freqSlider.value, 10));
+});
