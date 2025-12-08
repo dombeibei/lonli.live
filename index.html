@@ -3,11 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <title>Shortwave Radio Simulator (MVP)</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-  <!-- Leaflet map CSS + JS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Leaflet CSS MUST load before your CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmGHMNp3jVxNk7wC9FTez2f2V+4pFk="
+    crossorigin=""
+  />
 
   <link rel="stylesheet" href="style.css">
 </head>
@@ -27,6 +30,13 @@
 
   <h2>Map</h2>
   <div id="map"></div>
+
+  <!-- Leaflet JS MUST load before your main.js -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1j7kKkS1YlYhSUhtT3vuMlFeoLYiWsYtvPwZgWYo="
+    crossorigin=""
+  ></script>
 
   <script src="main.js"></script>
 
