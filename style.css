@@ -50,8 +50,8 @@ button:disabled {
 /* MAP FIXES */
 #map {
   width: 100%;
-  height: 350px;         /* guaranteed height */
-  min-height: 350px;     /* double safety */
+  height: 350px;
+  min-height: 350px;
   margin-top: 20px;
   border: 1px solid #555;
 }
