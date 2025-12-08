@@ -91,9 +91,9 @@ function computeSignalStrength() {
 }
 
 //--------------------------------------------------------
-// Audio: Create noise + station signal
+// Audio: Create noise + station audio loop
 //--------------------------------------------------------
-function startAudio() {
+async function startAudio() {
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
   // Noise source
@@ -101,23 +101,26 @@ function startAudio() {
   const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
   const data = noiseBuffer.getChannelData(0);
   for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * 0.5;
+    data[i] = (Math.random() * 2 - 1) * 0.4;
   }
   noiseNode = audioCtx.createBufferSource();
   noiseNode.buffer = noiseBuffer;
   noiseNode.loop = true;
 
-  // Station audio (a simple tone instead of a real audio file)
-  const osc = audioCtx.createOscillator();
-  osc.type = "sine";
-  osc.frequency.value = 440 + Math.random()*20; // unstable tone for 'station'
-  stationNode = osc;
+  // Load station audio file
+  const audioFile = await fetch('audio/station.mp3');
+  const audioArray = await audioFile.arrayBuffer();
+  const stationBuffer = await audioCtx.decodeAudioData(audioArray);
 
-  // Gain control
+  stationNode = audioCtx.createBufferSource();
+  stationNode.buffer = stationBuffer;
+  stationNode.loop = true;
+
+  // Gain
   gainNode = audioCtx.createGain();
   gainNode.gain.value = 0;
 
-  // Connect graph
+  // Connect
   noiseNode.connect(gainNode);
   stationNode.connect(gainNode);
   gainNode.connect(audioCtx.destination);
@@ -125,6 +128,7 @@ function startAudio() {
   noiseNode.start();
   stationNode.start();
 }
+
 
 //--------------------------------------------------------
 // Animation loop: update gain + UI
