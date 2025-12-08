@@ -140,3 +140,13 @@ startBtn.addEventListener("click",()=>{
         statusEl.textContent=`Tuned to ${transmitter.frequency} MHz`;
         startBtn.disabled=true;
       },
+      err=>{
+        statusEl.textContent="Geolocation permission denied or unavailable.";
+        running=false;
+      }
+    );
+  } else {
+    statusEl.textContent="Geolocation not supported.";
+    running=false;
+  }
+});
