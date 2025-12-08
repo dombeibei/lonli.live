@@ -1,7 +1,7 @@
 body {
-  font-family: Arial, sans-serif;
   background: #111;
   color: #eee;
+  font-family: Arial, sans-serif;
   margin: 40px;
 }
 
@@ -11,16 +11,23 @@ h1 {
 
 #status {
   margin-bottom: 20px;
-  font-size: 1.1em;
+}
+
+#controls {
+  margin-bottom: 20px;
+}
+
+#freq {
+  width: 300px;
+  margin-left: 10px;
 }
 
 button {
-  padding: 10px 18px;
-  font-size: 1em;
+  padding: 10px 16px;
   background: #444;
-  color: white;
-  border: 1px solid #888;
-  cursor: pointer;
+  color: #fff;
+  border: 1px solid #666;
+  margin-left: 10px;
 }
 
 button:disabled {
@@ -29,7 +36,7 @@ button:disabled {
 }
 
 #signal-container {
-  margin-top: 30px;
+  margin-top: 20px;
 }
 
 #signal-bar {
@@ -37,25 +44,19 @@ button:disabled {
   height: 20px;
   background: #333;
   border: 1px solid #666;
-  margin-top: 6px;
-  position: relative;
+  margin-top: 5px;
 }
 
 #signal-level {
   width: 0%;
   height: 100%;
   background: #4caf50;
-  transition: width 0.3s ease;
+  transition: width 0.3s linear;
 }
 
-/* Map */
 #map {
   width: 100%;
   height: 300px;
   margin-top: 20px;
   border: 1px solid #555;
-}
-
-h2 {
-  margin-top: 30px;
 }
