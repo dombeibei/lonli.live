@@ -4,7 +4,7 @@
  * Features:
  *  - Fetch stations.json
  *  - Geolocation
- *  - Leaflet map
+ *  - Interactive leaflet map
  *  - Audio chain (gain + noise)
  *  - Propagation model (fixed)
  *  - Frequency tuning
