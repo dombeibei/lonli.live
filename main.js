@@ -1,6 +1,6 @@
 //--------------------------------------------------------
-// lonli.live 0.1 (Map + Audio working)
-// Patched to ensure Leaflet map displays correctly
+// Slonli.live 0.1
+// Fixed geolocation + map + audio
 //--------------------------------------------------------
 
 // Hardcoded simulated transmitter
@@ -25,12 +25,12 @@ let gainNode = null;
 let running = false;
 
 //--------------------------------------------------------
-// MAP SETUP — Must occur after DOM loaded
+// MAP SETUP
 //--------------------------------------------------------
 let map = L.map('map', {
   zoomControl: true,
   attributionControl: true
-}).setView([20, 0], 2); // initial world view until geolocation arrives
+}).setView([20, 0], 2);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   maxZoom: 7,
@@ -41,35 +41,6 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 let userMarker = null;
 let txMarker = L.marker([transmitter.lat, transmitter.lon]).addTo(map);
 txMarker.bindPopup(`Transmitter<br>${transmitter.frequency} MHz`);
-
-//--------------------------------------------------------
-// GEOLOCATION
-//--------------------------------------------------------
-navigator.geolocation.getCurrentPosition(
-  pos => {
-    userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-    statusEl.textContent = `Location acquired: ${userPos.lat.toFixed(3)}, ${userPos.lon.toFixed(3)}`;
-    startBtn.disabled = false;
-
-    // Add user marker
-    if (userMarker) map.removeLayer(userMarker);
-    userMarker = L.marker([userPos.lat, userPos.lon]).addTo(map);
-    userMarker.bindPopup("You");
-
-    // Fit map bounds to show both markers
-    const bounds = L.latLngBounds(
-      [userPos.lat, userPos.lon],
-      [transmitter.lat, transmitter.lon]
-    );
-    map.fitBounds(bounds, { padding: [40, 40] });
-
-    // Force Leaflet to recalc size after layout settles
-    setTimeout(() => { map.invalidateSize(); }, 200);
-  },
-  err => {
-    statusEl.textContent = "Geolocation permission denied.";
-  }
-);
 
 //--------------------------------------------------------
 // Distance (Haversine)
@@ -96,4 +67,112 @@ function computeSignalStrength() {
   const t = performance.now() / 1000;
   const slow = 0.85 + 0.15 * Math.sin(t * 0.5);
   const fast = 0.9 + 0.1 * Math.random();
-  let
+  let fading = slow * fast;
+
+  const hour = new Date().getUTCHours();
+  const nightBoost = (hour >= 18 || hour <= 6) ? 1.3 : 0.7;
+
+  let signal = base * fading * nightBoost;
+  return Math.max(0, Math.min(1, signal));
+}
+
+//--------------------------------------------------------
+// AUDIO (Noise + station.mp3)
+async function startAudio() {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // ---- Noise ----
+  const bufferSize = 2 * audioCtx.sampleRate;
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * 0.4;
+  }
+
+  noiseNode = audioCtx.createBufferSource();
+  noiseNode.buffer = noiseBuffer;
+  noiseNode.loop = true;
+
+  // ---- Station audio ----
+  const audioFile = await fetch('audio/station.mp3');
+  const audioArray = await audioFile.arrayBuffer();
+  const stationBuffer = await audioCtx.decodeAudioData(audioArray);
+
+  stationNode = audioCtx.createBufferSource();
+  stationNode.buffer = stationBuffer;
+  stationNode.loop = true;
+
+  // ---- Gain ----
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0;
+
+  noiseNode.connect(gainNode);
+  stationNode.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  noiseNode.start();
+  stationNode.start();
+}
+
+//--------------------------------------------------------
+// UPDATE LOOP
+function update() {
+  if (!running) return;
+
+  const signal = computeSignalStrength();
+  signalLevelEl.style.width = (signal * 100).toFixed(1) + "%";
+
+  if (gainNode) gainNode.gain.value = 0.2 + (signal * 0.8);
+
+  requestAnimationFrame(update);
+}
+
+//--------------------------------------------------------
+// START BUTTON HANDLER
+//--------------------------------------------------------
+startBtn.addEventListener("click", () => {
+  if (running) return;
+  running = true;
+
+  statusEl.textContent = "Requesting location…";
+
+  // Request geolocation on first user interaction
+  if ("geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        userPos = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+
+        statusEl.textContent = `Location acquired: ${userPos.lat.toFixed(3)}, ${userPos.lon.toFixed(3)}`;
+
+        // Add user marker
+        if (userMarker) map.removeLayer(userMarker);
+        userMarker = L.marker([userPos.lat, userPos.lon]).addTo(map);
+        userMarker.bindPopup("You");
+
+        // Fit map bounds
+        const bounds = L.latLngBounds(
+          [userPos.lat, userPos.lon],
+          [transmitter.lat, transmitter.lon]
+        );
+        map.fitBounds(bounds, { padding: [40, 40] });
+
+        // Force redraw after layout settles
+        setTimeout(() => map.invalidateSize(), 200);
+
+        // Start audio & signal
+        startAudio();
+        update();
+
+        statusEl.textContent = `Tuned to ${transmitter.frequency} MHz`;
+        startBtn.disabled = true;
+      },
+      err => {
+        statusEl.textContent = "Geolocation permission denied or unavailable.";
+        startBtn.disabled = false;
+      }
+    );
+  } else {
+    statusEl.textContent = "Geolocation is not supported by your browser.";
+    startBtn.disabled = false;
+  }
+});
