@@ -1,187 +1,88 @@
-//--------------------------------------------------------
-// lonli.live 0.0.1 with:
-// • Station audio
-// • Static + fading
-// • Map test showing transmitter + user
-//--------------------------------------------------------
+/**
+ * lonli.live v0.1.0
+ * --------------------------------------------------------
+ * Handles:
+ * - Geolocation
+ * - Map initialization
+ * - Signal strength simulation
+ * - Radio audio playback
+ * --------------------------------------------------------
+ */
 
-// Hardcoded simulated transmitter
-const transmitter = {
-  lat: 51.0,      // example location (London-ish)
-  lon: -0.1,
-  power: 50000,
-  frequency: 9.6  // MHz
-};
-
-// DOM elements
 const statusEl = document.getElementById("status");
 const startBtn = document.getElementById("start-btn");
-const signalLevelEl = document.getElementById("signal-level");
+const signalLevel = document.getElementById("signal-level");
 
-let userPos = null;
-let audioCtx = null;
-let noiseNode = null;
-let stationNode = null;
-let gainNode = null;
+let userLat = null;
+let userLng = null;
+let map = null;
+let signalInterval = null;
 
-let running = false;
+// Optional audio (this will auto-load from /audio/station.mp3)
+const radioAudio = new Audio("audio/station.mp3");
+radioAudio.loop = true;  // Continuous playback
 
-//--------------------------------------------------------
-// Map initialisation (Leaflet)
-//--------------------------------------------------------
-let map = L.map('map').setView([51.0, -0.1], 3);
 
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 6,
-  minZoom: 2
-}).addTo(map);
-
-let userMarker = null;
-let txMarker = L.marker([transmitter.lat, transmitter.lon]).addTo(map);
-txMarker.bindPopup(`Transmitter<br>${transmitter.frequency} MHz`);
-
-//--------------------------------------------------------
-// Step 1: Get Geolocation
-//--------------------------------------------------------
+// ---------------------------------------------------------
+// 1. Request Geolocation
+// ---------------------------------------------------------
 navigator.geolocation.getCurrentPosition(
-  pos => {
-    userPos = {
-      lat: pos.coords.latitude,
-      lon: pos.coords.longitude
-    };
+  (pos) => {
+    userLat = pos.coords.latitude;
+    userLng = pos.coords.longitude;
 
-    statusEl.textContent = `Location acquired: ${userPos.lat.toFixed(3)}, ${userPos.lon.toFixed(3)}`;
+    statusEl.textContent =
+      `Your location: ${userLat.toFixed(4)}, ${userLng.toFixed(4)}`;
+
     startBtn.disabled = false;
-
-    // Add user to map
-    if (userMarker) map.removeLayer(userMarker);
-    userMarker = L.marker([userPos.lat, userPos.lon]).addTo(map);
-    userMarker.bindPopup("You are here");
-
-    // Auto zoom to show both user + transmitter
-    const bounds = L.latLngBounds([
-      [userPos.lat, userPos.lon],
-      [transmitter.lat, transmitter.lon]
-    ]);
-    map.fitBounds(bounds, { padding: [40, 40] });
+    initMap();
   },
-
-  err => {
-    statusEl.textContent = "Geolocation permission denied. Cannot simulate propagation.";
+  (err) => {
+    statusEl.textContent = "Geolocation failed or denied.";
   }
 );
 
-//--------------------------------------------------------
-// Haversine distance (km)
-//--------------------------------------------------------
-function distanceKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 +
-            Math.cos(lat1 * Math.PI/180) *
-            Math.cos(lat2 * Math.PI/180) *
-            Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+// ---------------------------------------------------------
+// 2. Initialize Leaflet Map
+// ---------------------------------------------------------
+function initMap() {
+  map = L.map("map").setView([userLat, userLng], 11);
+
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19
+  }).addTo(map);
+
+  L.marker([userLat, userLng]).addTo(map)
+    .bindPopup("You are here.")
+    .openPopup();
 }
 
-//--------------------------------------------------------
-// Propagation Model (very simple MVP)
-//--------------------------------------------------------
-function computeSignalStrength() {
-  if (!userPos) return 0;
 
-  // Distance attenuation
-  const d = distanceKm(userPos.lat, userPos.lon, transmitter.lat, transmitter.lon);
-  let base = transmitter.power / (d * d);
-
-  // Normalise roughly to 0–1
-  base = base / 50000;
-
-  // Fading: slow wobble + random microdips
-  const t = performance.now() / 1000;
-  const slowWobble = 0.85 + 0.15 * Math.sin(t * 0.5);
-  const randomDip = 0.9 + 0.1 * Math.random();
-
-  let fading = slowWobble * randomDip;
-
-  // Day/night effect
-  const hour = new Date().getUTCHours();
-  const nightBoost = (hour >= 18 || hour <= 6) ? 1.3 : 0.7;
-
-  let signal = base * fading * nightBoost;
-
-  return Math.max(0, Math.min(1, signal));
-}
-
-//--------------------------------------------------------
-// Audio: Noise + Real Station Audio
-//--------------------------------------------------------
-async function startAudio() {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-  // 1. Noise generator
-  const bufferSize = 2 * audioCtx.sampleRate;
-  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = noiseBuffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * 0.4;
-  }
-  noiseNode = audioCtx.createBufferSource();
-  noiseNode.buffer = noiseBuffer;
-  noiseNode.loop = true;
-
-  // 2. Load station audio file
-  const audioFile = await fetch('audio/station.mp3');
-  const audioArray = await audioFile.arrayBuffer();
-  const stationBuffer = await audioCtx.decodeAudioData(audioArray);
-
-  stationNode = audioCtx.createBufferSource();
-  stationNode.buffer = stationBuffer;
-  stationNode.loop = true;
-
-  // 3. Gain control
-  gainNode = audioCtx.createGain();
-  gainNode.gain.value = 0;
-
-  // 4. Connect nodes
-  noiseNode.connect(gainNode);
-  stationNode.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-
-  noiseNode.start();
-  stationNode.start();
-}
-
-//--------------------------------------------------------
-// Animation Loop: update fading + signal bar
-//--------------------------------------------------------
-function update() {
-  if (!running) return;
-
-  const signal = computeSignalStrength();
-  signalLevelEl.style.width = (signal * 100).toFixed(1) + "%";
-
-  if (gainNode) {
-    // Stronger signal → louder station, quieter noise
-    gainNode.gain.value = 0.2 + (signal * 0.8);
-  }
-
-  requestAnimationFrame(update);
-}
-
-//--------------------------------------------------------
-// Start Button
-//--------------------------------------------------------
+// ---------------------------------------------------------
+// 3. Start Radio Simulation
+// ---------------------------------------------------------
 startBtn.addEventListener("click", () => {
-  if (running) return;
+  statusEl.textContent = "Radio active…";
 
-  statusEl.textContent = "Starting radio…";
-  running = true;
-  startBtn.disabled = true;
+  // Start audio if available
+  try {
+    radioAudio.play();
+  } catch (e) {
+    console.warn("Audio could not play automatically.");
+  }
 
-  startAudio();
-  update();
-
-  statusEl.textContent = `Tuned to ${transmitter.frequency} MHz`;
+  // Begin simulated signal updates
+  signalInterval = setInterval(updateSignalStrength, 1000);
 });
+
+
+// ---------------------------------------------------------
+// 4. Signal Strength Logic
+// ---------------------------------------------------------
+function updateSignalStrength() {
+  // Example random noise simulation (placeholder)
+  const strength = Math.floor(Math.random() * 100);
+
+  signalLevel.style.width = strength + "%";
+}
