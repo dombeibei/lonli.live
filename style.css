@@ -1,10 +1,8 @@
-/* Retro, tactile UI for lonli.live shortwave simulator */
 :root{
   --bg: #0d0b07;
   --panel: #14120f;
   --muted: #b9b2a8;
   --accent: #cfa24a;
-  --glass: rgba(255,255,255,0.03);
 }
 
 *{box-sizing:border-box}
@@ -12,7 +10,8 @@ body{
   margin:18px;
   background:linear-gradient(180deg,#0b0a08 0%, #0d0b07 100%);
   color:#efe9de;
-  font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: Inter, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing:antialiased;
 }
 
 .retro-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
@@ -50,7 +49,6 @@ button:disabled{opacity:0.45;cursor:not-allowed}
 .map-panel h2{margin-top:0}
 #map{width:100%;height:680px;border-radius:8px;border:1px solid rgba(255,255,255,0.03)}
 
-/* Responsive */
 @media (max-width:980px){
   .layout{grid-template-columns:1fr}
   #map{height:420px}
