@@ -1,23 +1,24 @@
 /**
- * main.js — Hybrid Retro edition
+ * main.js — Hybrid Retro final
  *
- * Features:
- * - stations.json loader
- * - geolocation with Birmingham fallback
- * - Leaflet map + markers
- * - Hybrid UI: horizontal bar + digital readout + rotary-looking knob + fine buttons
- * - Start / Stop / Scan/Seek
- * - Propagation model (distance, frequency-match, day/night)
- * - QSB (LFO + stochastic) and static noise mixing
+ * Implements:
+ *  - stations.json load
+ *  - geolocation (fallback to Birmingham)
+ *  - Leaflet map and markers
+ *  - Hybrid UI wiring (range, number, knob, fine buttons)
+ *  - Start/Stop/Scan/Seek
+ *  - Propagation model (distance, freq match, day/night)
+ *  - Per-station audio switching with fade
+ *  - Static noise, bandpass shaping, QSB fading (LFO + stochastic)
  *
  * Notes:
- * - Ensure audio/station.mp3 exists
- * - Start action required by browser to resume AudioContext
+ *  - audio/station.mp3 must exist
+ *  - Browsers require user gesture to allow audio; Start provides it
  */
 
-/* -------------------------
+/* -----------------------
    DOM refs & state
-   ------------------------- */
+   ----------------------- */
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('start-btn');
 const stopBtn = document.getElementById('stop-btn');
@@ -39,29 +40,31 @@ let stations = [];
 let userLat = null, userLng = null;
 let map = null, markersLayer = null;
 
-// Audio
+/* Audio nodes */
 let audioCtx = null;
-let audioEl = document.getElementById('radio-audio');
-let mediaSource = null;
-let stationFilter = null;
+let currentMediaSource = null;   // current MediaElementSource
+let audioElement = null;         // active HTMLAudioElement
 let stationGain = null;
+let stationFilter = null;
 let masterGain = null;
+
 let noiseSource = null;
 let noiseGain = null;
 let noiseFilter = null;
 
-// Update loop
+/* runtime */
 let updateTimer = null;
 let scanning = false;
 let scanTimer = null;
-
 let tunedFreq = Number(freqRange.value || 6000);
 let scanStepKHz = 100;
 scanStepDisplay.textContent = `${scanStepKHz} kHz`;
 
-/* -------------------------
-   Utils
-   ------------------------- */
+let lastSwitch = { audioEl: null, gainNode: null };
+
+/* -----------------------
+   Utilities
+   ----------------------- */
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
 function lerp(a,b,t){ return a + (b-a)*t; }
 function toFixedInt(x){ return Math.round(x); }
@@ -78,9 +81,9 @@ function haversineKm(lat1, lon1, lat2, lon2){
   return R * c;
 }
 
-/* -------------------------
-   Propagation & freq match
-   ------------------------- */
+/* -----------------------
+   Propagation & matching
+   ----------------------- */
 function isStationNight(station){
   const nowUtcH = new Date().getUTCHours() + new Date().getUTCMinutes()/60;
   const offset = station.lng / 15.0;
@@ -113,9 +116,9 @@ function computeStationSignalFraction(station, freqKHz){
   return clamp01(x / (1 + x));
 }
 
-/* -------------------------
+/* -----------------------
    Stations load & map
-   ------------------------- */
+   ----------------------- */
 async function loadStations(){
   try{
     const r = await fetch('stations.json', {cache:'no-store'});
@@ -149,111 +152,166 @@ function initMap(){
   }
 }
 
-/* -------------------------
-   Audio graph
-   ------------------------- */
-function initAudio(){
+/* -----------------------
+   Audio graph & switching
+   ----------------------- */
+function createAudioGraphForElement(el){
+  // Returns {sourceNode, gainNode, filterNode}
+  const source = audioCtx.createMediaElementSource(el);
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.Q.value = 1.0;
+
+  const gain = audioCtx.createGain();
+  gain.gain.value = 0;
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(masterGain);
+  return { source, filter, gain };
+}
+
+function initAudioCore(){
   if (audioCtx) return;
   audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // audio element
-  if (!audioEl){
-    audioEl = document.getElementById('radio-audio') || new Audio('audio/station.mp3');
-    audioEl.loop = true;
-  }
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 1.0;
 
-  try{
-    mediaSource = audioCtx.createMediaElementSource(audioEl);
-  }catch(e){
-    // fallback create new audio element and source
-    audioEl = new Audio('audio/station.mp3');
-    audioEl.loop = true;
-    mediaSource = audioCtx.createMediaElementSource(audioEl);
-  }
+  // noise buffer source
+  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<d.length;i++) d[i] = (Math.random()*2 - 1) * 0.45;
 
-  stationFilter = audioCtx.createBiquadFilter();
-  stationFilter.type = 'bandpass';
-  stationFilter.Q.value = 1.0;
-
-  stationGain = audioCtx.createGain();
-  stationGain.gain.value = 0;
-
-  noiseGain = audioCtx.createGain();
-  noiseGain.gain.value = 0.6;
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = buf;
+  noiseSource.loop = true;
 
   noiseFilter = audioCtx.createBiquadFilter();
   noiseFilter.type = 'lowpass';
   noiseFilter.frequency.value = 6000;
 
-  masterGain = audioCtx.createGain();
-  masterGain.gain.value = 1.0;
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.6;
 
-  // white noise buffer
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i=0;i<d.length;i++) d[i] = (Math.random()*2 - 1) * 0.45;
-  noiseSource = audioCtx.createBufferSource();
-  noiseSource.buffer = buf;
-  noiseSource.loop = true;
-
-  // connect graph
-  mediaSource.connect(stationFilter);
-  stationFilter.connect(stationGain);
-  stationGain.connect(masterGain);
-
+  // route noise -> lowpass -> gain -> master
   noiseSource.connect(noiseFilter);
   noiseFilter.connect(noiseGain);
   noiseGain.connect(masterGain);
 
+  // master -> destination
   masterGain.connect(audioCtx.destination);
 
   noiseSource.start();
-  audioEl.play().catch(()=>{/* blocked until gesture */});
 }
 
-/* -------------------------
-   QSB & audio update
-   ------------------------- */
+async function switchToStationAudio(station){
+  // station.audio expected (local audio path). Create new audio element each switch to avoid MediaElementSource reuse errors.
+  if (!station || !station.audio){
+    // fade out current
+    if (lastSwitch.gainNode){
+      lastSwitch.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+      lastSwitch.gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.25);
+    }
+    if (audioElement){
+      try{ audioElement.pause(); }catch(e){}
+    }
+    lastSwitch.audioEl = null;
+    lastSwitch.gainNode = null;
+    return;
+  }
+
+  // if already playing this station, keep it
+  if (lastSwitch.audioEl && lastSwitch.audioEl.src && lastSwitch.audioEl.src.indexOf(station.audio) !== -1){
+    return;
+  }
+
+  // create new HTMLAudioElement for station
+  const el = new Audio(station.audio);
+  el.crossOrigin = "anonymous";
+  el.loop = true;
+  el.preload = "auto";
+
+  // connect
+  const { source, filter, gain } = createAudioGraphForElement(el);
+
+  // fade out previous
+  if (lastSwitch.gainNode){
+    lastSwitch.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+    lastSwitch.gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.25);
+    // stop and disconnect old element after fade
+    const oldEl = lastSwitch.audioEl;
+    setTimeout(()=> {
+      try{ if (oldEl) oldEl.pause(); }catch(e){}
+    }, 300);
+  }
+
+  // set new as active
+  lastSwitch.audioEl = el;
+  lastSwitch.gainNode = gain;
+  lastSwitch.filterNode = filter;
+
+  // start play (may be blocked until user gesture)
+  try{
+    await el.play();
+  }catch(e){
+    // Silence until user clicks Start (Start handler resumes audioCtx and plays)
+  }
+}
+
+/* -----------------------
+   QSB & periodic update
+   ----------------------- */
 let qsbPhase = 0;
 let lastTime = performance.now();
 
-function applyAudioUpdates(freqKHz, bestStation, strength){
+function applyAudioParams(freqKHz, bestStation, strength){
   if (!audioCtx) return;
 
-  // filter center mapping (creative)
-  const filtHz = Math.max(300, freqKHz * 10);
-  stationFilter.frequency.setTargetAtTime(filtHz, audioCtx.currentTime, 0.05);
-  stationFilter.Q.setTargetAtTime(1 + (1 - strength) * 4, audioCtx.currentTime, 0.05);
+  // station filter center mapping applied to currently active filter node
+  if (lastSwitch.filterNode){
+    const filtHz = Math.max(300, freqKHz * 10);
+    lastSwitch.filterNode.frequency.setTargetAtTime(filtHz, audioCtx.currentTime, 0.05);
+    lastSwitch.filterNode.Q.setTargetAtTime(1 + (1 - strength) * 4, audioCtx.currentTime, 0.05);
+  }
 
   // station gain
-  const baseGain = clamp01(Math.pow(strength, 0.9));
-  stationGain.gain.setTargetAtTime(baseGain, audioCtx.currentTime, 0.05);
+  if (lastSwitch.gainNode){
+    const baseGain = clamp01(Math.pow(strength, 0.9));
+    lastSwitch.gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+    lastSwitch.gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
+  }
 
   // noise
-  const noiseLvl = lerp(0.9, 0.02, strength);
-  noiseGain.gain.setTargetAtTime(noiseLvl, audioCtx.currentTime, 0.05);
-  noiseFilter.frequency.setTargetAtTime(lerp(9000, 2000, strength), audioCtx.currentTime, 0.12);
+  if (noiseGain && noiseFilter){
+    const noiseLvl = lerp(0.9, 0.02, strength);
+    noiseGain.gain.setTargetAtTime(noiseLvl, audioCtx.currentTime, 0.05);
+    noiseFilter.frequency.setTargetAtTime(lerp(9000, 2000, strength), audioCtx.currentTime, 0.12);
+  }
 
-  // QSB
+  // QSB (JS LFO + stochastic)
   const qsbDepth = clamp01(1 - strength);
   const qsbRate = lerp(0.08, 1.2, qsbDepth);
 
-  // JS LFO (time-based)
   const now = performance.now();
   const dt = (now - lastTime) / 1000;
   lastTime = now;
   qsbPhase += qsbRate * dt;
   const lfo = Math.sin(2 * Math.PI * qsbPhase);
   const stochastic = (Math.random() - 0.5) * 0.2;
-  const mod = lfo * qsbDepth * (0.4 + stochastic) * baseGain;
-  stationGain.gain.setTargetAtTime(Math.max(0, baseGain + mod), audioCtx.currentTime, 0.05);
+  const mod = lfo * qsbDepth * (0.4 + stochastic);
+
+  if (lastSwitch.gainNode){
+    const base = clamp01(Math.pow(strength, 0.9));
+    lastSwitch.gainNode.gain.setTargetAtTime(Math.max(0, base + mod * base), audioCtx.currentTime, 0.05);
+  }
 
   if (qsbDepthDisplay) qsbDepthDisplay.textContent = qsbDepth > 0.66 ? 'high' : (qsbDepth > 0.33 ? 'medium' : 'low');
 }
 
-/* -------------------------
-   Find & update best station
-   ------------------------- */
+/* -----------------------
+   Find best station
+   ----------------------- */
 function findBestStation(freqKHz){
   if (!stations || stations.length === 0) return {station:null, fraction:0};
   let best = null, bestF = 0;
@@ -264,54 +322,48 @@ function findBestStation(freqKHz){
   return {station: best, fraction: bestF};
 }
 
-/* -------------------------
-   Update loop (UI + audio)
-   ------------------------- */
+/* -----------------------
+   Update loop
+   ----------------------- */
 function startUpdateLoop(){
   if (updateTimer) return;
-  updateTimer = setInterval(()=>{
+  updateTimer = setInterval(async () => {
     const freq = Number(freqNumber.value || freqRange.value || 6000);
     tunedFreq = freq;
-    const r = findBestStation(freq);
 
-    const pct = Math.round(r.fraction * 100);
+    const result = findBestStation(freq);
+    const pct = Math.round(result.fraction * 100);
     if (signalLevelEl) signalLevelEl.style.width = pct + '%';
-    if (nearestEl) nearestEl.textContent = r.station ? `${r.station.label} — ${r.station.frequency_khz} kHz — ${pct}%` : 'Nearest: —';
+    if (nearestEl) nearestEl.textContent = result.station ? `${result.station.label} — ${result.station.frequency_khz} kHz — ${pct}%` : 'Nearest: —';
 
-    // needle styling (map frequency to angle)
-    if (knobEl){
-      const min = Number(freqRange.min);
-      const max = Number(freqRange.max);
-      const angle = lerp(-50, 50, clamp01((freq - min) / (max - min)));
-      knobEl.style.transform = `rotate(${angle}deg)`;
-    }
     if (freqReadout) freqReadout.textContent = `${toFixedInt(freq)} kHz`;
 
-    initAudio();
-    if (r.station && r.station.audio){
-      if (!audioEl.src || audioEl.src.indexOf(r.station.audio) === -1){
-        audioEl.src = r.station.audio;
-        audioEl.loop = true;
-        audioEl.play().catch(()=>{/* blocked */});
-      }
-    }
+    // ensure core audio
+    initAudioCore();
 
-    applyAudioUpdates(freq, r.station, r.fraction);
+    // switch station audio if necessary (non-blocking)
+    if (result.station) await switchToStationAudio(result.station);
+    else await switchToStationAudio(null);
 
-  }, 100); // 10 Hz
+    // apply audio params and QSB
+    applyAudioParams(freq, result.station, result.fraction);
+
+  }, 100); // 10Hz
 }
 
 function stopUpdateLoop(){
   if (updateTimer){ clearInterval(updateTimer); updateTimer = null; }
 }
 
-/* -------------------------
-   Controls: Start / Stop / Scan
-   ------------------------- */
+/* -----------------------
+   Start / Stop / Scan
+   ----------------------- */
 function startRadio(){
-  initAudio();
+  initAudioCore();
   audioCtx.resume().catch(()=>{});
-  audioEl.play().catch(()=>{});
+  if (lastSwitch.audioEl){
+    try{ lastSwitch.audioEl.play(); }catch(e){}
+  }
   startBtn.disabled = true;
   stopBtn.disabled = false;
   scanBtn.disabled = false;
@@ -319,8 +371,8 @@ function startRadio(){
 }
 
 function stopRadio(){
-  try{ audioEl.pause(); }catch(e){}
-  if (stationGain) stationGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+  try{ if (lastSwitch.audioEl) lastSwitch.audioEl.pause(); }catch(e){}
+  if (lastSwitch.gainNode) lastSwitch.gainNode.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
   if (noiseGain) noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
   startBtn.disabled = false;
   stopBtn.disabled = true;
@@ -332,7 +384,7 @@ function startScan(){
   if (scanning) return;
   scanning = true;
   scanBtn.textContent = 'Scanning...';
-  scanTimer = setInterval(()=>{
+  scanTimer = setInterval(()=> {
     let v = Number(freqNumber.value || freqRange.value);
     v += scanStepKHz;
     if (v > Number(freqRange.max)) v = Number(freqRange.min);
@@ -341,8 +393,6 @@ function startScan(){
     if (r.fraction >= 0.18){
       // lock
       stopScan();
-      // apply immediately
-      applyAudioUpdates(v, r.station, r.fraction);
     }
   }, 180);
 }
@@ -354,11 +404,11 @@ function stopScan(){
   scanBtn.textContent = 'Scan/Seek';
 }
 
-/* -------------------------
-   UI wiring
-   ------------------------- */
-function wireUI(){
-  // tune sync
+/* -----------------------
+   UI wiring and helpers
+   ----------------------- */
+function initUI(){
+  // sync range <-> number
   freqRange.addEventListener('input', () => {
     freqNumber.value = freqRange.value;
     freqReadout.textContent = `${toFixedInt(freqRange.value)} kHz`;
@@ -371,21 +421,19 @@ function wireUI(){
     freqReadout.textContent = `${toFixedInt(v)} kHz`;
   });
 
-  // fine tuning buttons
+  // fine buttons
   fineUp.addEventListener('click', () => {
-    const step = 1; // 1 kHz
-    let v = Number(freqNumber.value) + step;
+    let v = Number(freqNumber.value) + 1;
     v = Math.min(Number(freqRange.max), v);
     freqNumber.value = v; freqRange.value = v; freqReadout.textContent = `${toFixedInt(v)} kHz`;
   });
   fineDown.addEventListener('click', () => {
-    const step = 1;
-    let v = Number(freqNumber.value) - step;
+    let v = Number(freqNumber.value) - 1;
     v = Math.max(Number(freqRange.min), v);
     freqNumber.value = v; freqRange.value = v; freqReadout.textContent = `${toFixedInt(v)} kHz`;
   });
 
-  // knob drag tuning (mouse / touch)
+  // knob drag
   let dragging = false;
   let startY = 0;
   let startVal = 0;
@@ -397,9 +445,9 @@ function wireUI(){
   });
   window.addEventListener('pointermove', (ev) => {
     if (!dragging) return;
-    const dy = startY - ev.clientY; // up increases frequency
-    const sensitivity = 20; // pixels per 1kHz step (tweak)
-    const delta = Math.round(dy / sensitivity) * 10; // coarse: 10 kHz per notch
+    const dy = startY - ev.clientY;
+    const sensitivity = 18; // pixels per 10kHz
+    const delta = Math.round(dy / sensitivity) * 10;
     let v = startVal + delta;
     v = Math.max(Number(freqRange.min), Math.min(Number(freqRange.max), v));
     freqNumber.value = v; freqRange.value = v; freqReadout.textContent = `${toFixedInt(v)} kHz`;
@@ -409,26 +457,58 @@ function wireUI(){
     try{ knobEl.releasePointerCapture(ev.pointerId); }catch(e){}
   });
 
-  // buttons
+  // Buttons
   startBtn.addEventListener('click', () => startRadio());
   stopBtn.addEventListener('click', () => stopRadio());
-  scanBtn.addEventListener('click', () => {
-    if (scanning) stopScan(); else startScan();
-  });
+  scanBtn.addEventListener('click', () => { if (scanning) stopScan(); else startScan(); });
 
-  // enable start button
+  // initial states
   startBtn.disabled = false;
   stopBtn.disabled = true;
   scanBtn.disabled = false;
 }
 
-/* -------------------------
+/* -----------------------
+   Core audio init
+   ----------------------- */
+function initAudioCore(){
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 1.0;
+  masterGain.connect(audioCtx.destination);
+
+  // noise
+  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 2, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<d.length;i++) d[i] = (Math.random()*2 - 1) * 0.45;
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = buf;
+  noiseSource.loop = true;
+
+  noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'lowpass';
+  noiseFilter.frequency.value = 6000;
+
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.6;
+
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(masterGain);
+
+  noiseSource.start();
+}
+
+/* -----------------------
    Boot sequence
-   ------------------------- */
+   ----------------------- */
 async function boot(){
   await loadStations();
-  wireUI();
+  initUI();
 
+  // geolocation
   if (navigator.geolocation){
     navigator.geolocation.getCurrentPosition((pos) => {
       userLat = pos.coords.latitude; userLng = pos.coords.longitude;
@@ -436,7 +516,7 @@ async function boot(){
       initMap();
     }, (err) => {
       console.warn('geolocation failed', err);
-      userLat = 52.4895; userLng = -1.8980;
+      userLat = 52.4895; userLng = -1.8980; // Birmingham fallback
       if (statusEl) statusEl.textContent = 'Geolocation denied — using Birmingham fallback';
       initMap();
     }, {timeout:8000, maximumAge:60000});
