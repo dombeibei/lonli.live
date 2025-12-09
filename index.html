@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>lonli.live</title>
+  <title>lonli.live — Hybrid Retro Radio</title>
 
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -12,47 +12,55 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="retro-header">
+  <header class="header">
     <div class="brand">
-      <div class="logo">•</div>
-      <h1>lonli.live</h1>
+      <div class="logo">lonli.live</div>
+      <div class="subtitle">Hybrid retro — tuning, scan, QSB</div>
     </div>
-    <div class="subtitle">lonli.live</div>
   </header>
 
-  <main class="layout">
+  <main class="container">
     <aside class="panel controls">
-      <div id="status" class="status muted">Waiting for geolocation…</div>
+      <div id="status" class="status">Waiting for geolocation…</div>
 
-      <div class="dial">
-        <div class="dial-face">
-          <div id="dial-needle" class="needle" style="transform: rotate(0deg)"></div>
-        </div>
-        <div class="freq-display">
-          <div class="label">Frequency</div>
-          <div id="freq-readout" class="freq">6000 kHz</div>
+      <div class="ui-row">
+        <div class="freq-box">
+          <div class="digital">
+            <div class="label">Frequency</div>
+            <div id="freq-readout" class="freq">6000 kHz</div>
+          </div>
+
+          <div class="bar">
+            <input id="freq" type="range" min="150" max="30000" step="1" value="6000" />
+          </div>
+
+          <div class="freq-controls">
+            <input id="freq-number" type="number" min="150" max="30000" value="6000" />
+            <div class="knob-wrap">
+              <div id="knob" class="knob" title="Drag to tune"></div>
+              <div class="knob-helpers">
+                <button id="fine-down" class="small">-</button>
+                <button id="fine-up" class="small">+</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div class="tuning">
-        <input id="freq" type="range" min="150" max="30000" step="1" value="6000" />
-        <input id="freq-number" type="number" min="150" max="30000" value="6000" />
-      </div>
-
-      <div class="buttons">
+      <div class="ui-row buttons">
         <button id="start-btn" disabled>Start</button>
         <button id="stop-btn" disabled>Stop</button>
         <button id="scan-btn" disabled>Scan/Seek</button>
       </div>
 
-      <div class="signal">
-        <label>Signal</label>
+      <div class="ui-row signal">
+        <label>Signal strength</label>
         <div id="signal-bar"><div id="signal-level"></div></div>
         <div id="nearest" class="muted">Nearest: —</div>
       </div>
 
-      <div class="settings muted">
-        QSB depth: <span id="qsb-depth-display">auto</span> · Scan step: <span id="scan-step-display">100 kHz</span>
+      <div class="ui-row small muted">
+        QSB: <span id="qsb-depth-display">auto</span> · Scan step: <span id="scan-step-display">100 kHz</span>
       </div>
     </aside>
 
@@ -62,7 +70,7 @@
     </section>
   </main>
 
-  <!-- Hidden audio element used for playback -->
+  <!-- audio element -->
   <audio id="radio-audio" src="audio/station.mp3" crossorigin="anonymous" preload="auto"></audio>
 
   <script src="main.js"></script>
